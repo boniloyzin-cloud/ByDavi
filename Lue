@@ -1,0 +1,169 @@
+-- ==========================================================
+-- SCRIPT NAME: Hour pvp (Rayfield UI + Center FOV + ESP Box)
+-- OWNER:  Davi
+-- ==========================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "Hour pvp | Pro Hub",
+   LoadingTitle = "Hour pvp Loading...",
+   LoadingSubtitle = "by  Davi",
+   ConfigurationSaving = {
+      Enabled = false,
+   },
+   KeySystem = false,
+})
+
+-- 1. បង្កើត Tab តាមការស្នើសុំ
+local MainTab = Window:CreateTab("Aimbot & ESP", 4483362458)
+
+-- Variables
+local AimbotEnabled = false
+local FovEnabled = false
+local EspBoxEnabled = false
+local FovSize = 120
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+
+-- Drawing Circle สำหรับ FOV (នៅចំកណ្តាលអេក្រង់)
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 40
+FOVCircle.Radius = FovSize
+FOVCircle.Filled = false
+FOVCircle.Color = Color3.fromRGB(0, 255, 150)
+FOVCircle.Visible = false
+
+-- Storage สำหรับ ESP Box
+local EspDrawings = {}
+
+local function CreateEsp(player)
+   if EspDrawings[player] then return end
+   local box = Drawing.new("Square")
+   box.Thickness = 1.5
+   box.Filled = false
+   box.Color = Color3.fromRGB(0, 255, 150)
+   box.Visible = false
+   EspDrawings[player] = box
+end
+
+Players.PlayerRemoving:Connect(function(player)
+   if EspDrawings[player] then
+      EspDrawings[player]:Remove()
+      EspDrawings[player] = nil
+   end
+end)
+
+-- 2. ใส่ Controls ใน Tab ของ Rayfield
+MainTab:CreateToggle({
+   Name = "Enable Aimbot (Head)",
+   CurrentValue = false,
+   Flag = "AimbotToggle",
+   Callback = function(Value)
+      AimbotEnabled = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Show Center FOV Circle",
+   CurrentValue = false,
+   Flag = "FovToggle",
+   Callback = function(Value)
+      FovEnabled = Value
+      FOVCircle.Visible = Value
+   end,
+})
+
+MainTab:CreateSlider({
+   Name = "FOV Size",
+   Range = {50, 400},
+   Increment = 5,
+   CurrentValue = 120,
+   Flag = "FovSlider",
+   Callback = function(Value)
+      FovSize = Value
+      FOVCircle.Radius = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "ESP Box",
+   CurrentValue = false,
+   Flag = "EspBoxToggle",
+   Callback = function(Value)
+      EspBoxEnabled = Value
+      if not Value then
+         for _, box in pairs(EspDrawings) do
+            box.Visible = false
+         end
+      end
+   end,
+})
+
+-- 3. Main Loop
+RunService.RenderStepped:Connect(function()
+   local viewportSize = Camera.ViewportSize
+   local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
+   FOVCircle.Position = screenCenter
+
+   local closestTarget = nil
+   local shortestDist = FovSize
+
+   for _, player in pairs(Players:GetPlayers()) do
+      if player ~= LocalPlayer then
+         CreateEsp(player)
+         local box = EspDrawings[player]
+         local char = player.Character
+         local hrp = char and char:FindFirstChild("HumanoidRootPart")
+         local head = char and char:FindFirstChild("Head")
+         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+
+         if char and hrp and head and humanoid and humanoid.Health > 0 then
+            -- Aimbot Logic
+            if AimbotEnabled then
+               local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+               if headOnScreen then
+                  local dist = (Vector2.new(headPos.X, headPos.Y) - screenCenter).Magnitude
+                  if dist < shortestDist then
+                     shortestDist = dist
+                     closestTarget = head
+                  end
+               end
+            end
+
+            -- ESP Box Logic
+            if EspBoxEnabled then
+               local rootPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+               if onScreen then
+                  local headTop = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
+                  local legBottom = Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0))
+                  local height = math.abs(headTop.Y - legBottom.Y)
+                  local width = height * 0.6
+
+                  box.Size = Vector2.new(width, height)
+                  box.Position = Vector2.new(rootPos.X - width / 2, headTop.Y)
+                  box.Visible = true
+               else
+                  box.Visible = false
+               end
+            else
+               box.Visible = false
+            end
+         else
+            box.Visible = false
+         end
+      end
+   end
+
+   -- Lock Camera to Head
+   if AimbotEnabled and closestTarget then
+      Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestTarget.Position)
+   end
+end)
+
+Rayfield:LoadConfiguration()
+print("✅ Hour pvp with Rayfield Tabs loaded successfully for papa Davi!")
